@@ -1,0 +1,21 @@
+workflow:
+  id: connectwise-ticket-creation
+  name: ConnectWise Ticket Creation
+  description: Creates a ticket in ConnectWise Manage for critical alerts
+  triggers:
+    - type: alert
+      filters:
+        - key: severity
+          value: critical
+  actions:
+    - name: create-ticket
+      provider:
+        type: connectwise-manage
+        config: "{{ providers.connectwise-manage }}"
+        with:
+          summary: "Critical Alert: {{ alert.name }}"
+          description: "{{ alert.description }}\n\nAlert details: {{ alert }}"
+          board_id: 1  # Replace with actual board ID
+          company_id: "{{ alert.labels.company_id | default('1') }}"  # Assuming company_id is in alert labels
+          status_id: 1  # Replace with actual status ID for new tickets
+          priority_id: 1  # Replace with actual priority ID for critical

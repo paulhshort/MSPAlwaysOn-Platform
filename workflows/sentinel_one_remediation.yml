@@ -1,0 +1,36 @@
+workflow:
+  id: sentinel-one-remediation
+  name: SentinelOne Threat Remediation
+  description: Automatically isolates endpoints with critical threats and creates tickets
+  triggers:
+    - type: alert
+      filters:
+        - key: source
+          value: sentinelone
+        - key: severity
+          value: critical
+  steps:
+    - name: get-endpoint-details
+      provider:
+        type: sentinelone
+        config: "{{ providers.sentinelone }}"
+        with:
+          query: "get_endpoint_by_threat_id('{{ alert.threat_id }}')"
+  actions:
+    - name: isolate-endpoint
+      provider:
+        type: sentinelone
+        config: "{{ providers.sentinelone }}"
+        with:
+          action: isolate
+          endpoint_id: "{{ steps.get-endpoint-details.results.endpoint_id }}"
+    - name: create-ticket
+      provider:
+        type: connectwise-manage
+        config: "{{ providers.connectwise }}"
+        with:
+          summary: "Critical Threat Detected - Endpoint Isolated"
+          description: "SentinelOne detected a critical threat on {{ steps.get-endpoint-details.results.hostname }}. The endpoint has been automatically isolated."
+          company_id: "{{ alert.client_id }}"
+          priority: "Critical"
+          service_type: "Security"

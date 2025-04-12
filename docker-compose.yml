@@ -1,0 +1,93 @@
+services:
+  # MSPAlwaysOn Backend
+  msp-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/mspalwayson
+      - REDIS_URL=redis://redis:6379/0
+      - ALERT_ENGINE_URL=http://alert-engine:8080
+    depends_on:
+      - db
+      - redis
+      - alert-engine
+
+  # MSPAlwaysOn Frontend
+  msp-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_ALERT_ENGINE_URL=http://localhost:8080
+    depends_on:
+      - msp-backend
+
+  # Alert Engine Backend
+  alert-engine:
+    build:
+      context: ../keep
+      dockerfile: docker/Dockerfile.dev.api
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../keep:/app
+      - ./alert_engine_data:/state
+    environment:
+      - KEEP_DATABASE_URL=postgresql://postgres:postgres@db:5432/alert_engine
+      - KEEP_REDIS_URL=redis://redis:6379/1
+      - KEEP_WEBSOCKET_URL=http://websocket-server:6001
+      - POSTHOG_DISABLED=true
+      - FRIGADE_DISABLED=true
+    depends_on:
+      - db
+      - redis
+      - websocket-server
+
+  # WebSocket Server
+  websocket-server:
+    image: quay.io/soketi/soketi:latest-16-alpine
+    ports:
+      - "6001:6001"
+    environment:
+      - SOKETI_DEBUG=1
+      - SOKETI_DEFAULT_APP_ID=mspalwayson
+      - SOKETI_DEFAULT_APP_KEY=mspalwayson
+      - SOKETI_DEFAULT_APP_SECRET=mspalwayson
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_MULTIPLE_DATABASES=mspalwayson,alert_engine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/create-multiple-postgresql-databases.sh:/docker-entrypoint-initdb.d/create-multiple-postgresql-databases.sh
+
+  # Redis
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+  alert_engine_data:

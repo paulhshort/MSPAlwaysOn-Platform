@@ -1,0 +1,71 @@
+workflow:
+  id: security-incident-response
+  name: Security Incident Response
+  description: Automated response to security incidents from SentinelOne
+  triggers:
+    - type: alert
+      filters:
+        - key: source
+          value: sentinelone
+        - key: severity
+          value: critical
+  steps:
+    - name: get-endpoint-details
+      provider:
+        type: sentinelone  # This will be implemented later
+        config: "{{ providers.sentinelone }}"
+        with:
+          query: "get_endpoint_by_threat_id('{{ alert.annotations.threat_id }}')"
+  actions:
+    - name: isolate-endpoint
+      provider:
+        type: sentinelone  # This will be implemented later
+        config: "{{ providers.sentinelone }}"
+        with:
+          action: isolate
+          endpoint_id: "{{ steps.get-endpoint-details.results.endpoint_id }}"
+    - name: create-ticket
+      provider:
+        type: connectwise-manage
+        config: "{{ providers.connectwise-manage }}"
+        with:
+          summary: "SECURITY INCIDENT: Threat Detected - Endpoint Isolated"
+          description: |
+            A critical security threat has been detected and the endpoint has been automatically isolated.
+            
+            Threat Details:
+            - Threat Name: {{ alert.name }}
+            - Endpoint: {{ steps.get-endpoint-details.results.hostname }}
+            - IP Address: {{ steps.get-endpoint-details.results.ip_address }}
+            - User: {{ steps.get-endpoint-details.results.last_logged_in_user }}
+            - Detection Time: {{ alert.lastReceived }}
+            
+            Automatic Actions Taken:
+            - Endpoint has been isolated from the network
+            - This ticket has been created
+            
+            Next Steps:
+            1. Investigate the threat using SentinelOne console
+            2. Determine if additional containment is needed
+            3. Remediate the threat
+            4. Restore endpoint connectivity when safe
+          board_id: 1  # Security board
+          company_id: "{{ alert.labels.company_id | default('1') }}"
+          status_id: 1  # New
+          priority_id: 1  # Critical
+          impact_id: 1  # High
+    - name: send-notification
+      provider:
+        type: teams  # This will be implemented later
+        config: "{{ providers.teams }}"
+        with:
+          channel: "security-alerts"
+          title: "Critical Security Alert - Endpoint Isolated"
+          message: |
+            **SECURITY INCIDENT**: A critical threat has been detected on {{ steps.get-endpoint-details.results.hostname }}
+            
+            The endpoint has been automatically isolated and a ticket has been created.
+            
+            **Ticket**: [{{ actions.create-ticket.ticket_id }}]({{ providers.connectwise-manage.base_url }}/service/tickets/{{ actions.create-ticket.ticket_id }})
+            
+            Please investigate immediately.
