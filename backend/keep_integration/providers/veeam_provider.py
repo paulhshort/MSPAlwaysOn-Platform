@@ -19,26 +19,26 @@ logger = logging.getLogger(__name__)
 class VeeamProvider(BaseProvider):
     """
     Veeam provider for Keep.dev.
-    
+
     This provider allows Keep to:
     1. Query backup jobs and sessions from Veeam
     2. Monitor backup job status
     3. Sync alerts between Keep and Veeam
     """
-    
+
     PROVIDER_DISPLAY_NAME = "Veeam Backup & Replication"
     PROVIDER_CATEGORY = ["Backup", "Disaster Recovery"]
     PROVIDER_TAGS = ["msp", "backup", "dr"]
     PROVIDER_DESCRIPTION = "Veeam Backup & Replication is a backup and disaster recovery solution."
     FINGERPRINT_FIELDS = ["id", "name"]
-    
+
     def __init__(self, provider_id, config):
         super().__init__(provider_id, config)
         self.client = None
         self.token = None
         self.token_expiry = None
         self._init_client()
-    
+
     def _init_client(self):
         """Initialize the Veeam client."""
         try:
@@ -46,12 +46,12 @@ class VeeamProvider(BaseProvider):
             self.username = auth_config.get("username")
             self.password = auth_config.get("password")
             self.base_url = auth_config.get("base_url")
-            
+
             # Validate required configuration
             if not all([self.username, self.password, self.base_url]):
                 logger.error("Missing required Veeam authentication configuration")
                 return
-            
+
             # Initialize HTTP client
             self.client = httpx.AsyncClient(
                 base_url=self.base_url,
@@ -62,33 +62,33 @@ class VeeamProvider(BaseProvider):
         except Exception as e:
             logger.error(f"Error initializing Veeam client: {e}")
             self.client = None
-    
+
     async def _get_token(self):
         """
         Get an authentication token from Veeam.
-        
+
         Returns:
             True if successful, False otherwise
         """
         if not self.client:
             logger.error("Veeam client not initialized")
             return False
-        
+
         # Check if we already have a valid token
         if self.token and self.token_expiry and datetime.now() < self.token_expiry:
             return True
-        
+
         try:
             # Prepare authentication headers
             auth_string = f"{self.username}:{self.password}"
             encoded_auth = base64.b64encode(auth_string.encode()).decode()
-            
+
             headers = {
                 "Authorization": f"Basic {encoded_auth}",
                 "Content-Type": "application/x-www-form-urlencoded",
                 "x-api-version": "1.0-rev1"
             }
-            
+
             # Make API request
             response = await self.client.post(
                 "/api/oauth2/token",
@@ -96,63 +96,72 @@ class VeeamProvider(BaseProvider):
                 data="grant_type=password&username=&password="
             )
             response.raise_for_status()
-            
+
             # Parse response
             data = response.json()
             self.token = data.get("access_token")
             expires_in = data.get("expires_in", 900)  # Default to 15 minutes
             self.token_expiry = datetime.now() + timedelta(seconds=expires_in)
-            
+
             # Update client headers
             self.client.headers.update({
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json",
                 "x-api-version": "1.0-rev1"
             })
-            
+
             return True
         except Exception as e:
             logger.error(f"Error getting Veeam token: {e}")
             self.token = None
             self.token_expiry = None
             return False
-    
+
     async def query(self, query_params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Query backup jobs and sessions from Veeam.
-        
+
         Args:
             query_params: Parameters for the query
-                - query_type: Type of query (jobs, sessions, repositories)
+                - query_type: Type of query (jobs, sessions, repositories, vms, protected_vms)
                 - filters: Dictionary of filters
                 - limit: Maximum number of results (default: 100)
                 - offset: Pagination offset
-                
+                - client_id: Optional client ID to filter results
+
         Returns:
             List of items matching the query
         """
         if not await self._get_token():
             logger.error("Failed to get Veeam token")
             return []
-        
+
         try:
             # Extract query parameters
             query_type = query_params.get("query_type", "jobs")
             filters = query_params.get("filters", {})
             limit = query_params.get("limit", 100)
             offset = query_params.get("offset", 0)
-            
+            client_id = query_params.get("client_id")
+
+            # If client_id is provided, get the client-specific filters
+            if client_id:
+                client_filters = await self._get_client_filters(client_id)
+                if client_filters:
+                    # Merge client filters with existing filters
+                    filters.update(client_filters)
+
             # Build query parameters
             params = {
                 "limit": limit,
                 "offset": offset
             }
-            
+
             # Add filters if provided
             if filters:
                 for key, value in filters.items():
                     params[key] = value
-            
+
             # Determine endpoint based on query type
             if query_type == "jobs":
                 endpoint = "/api/v1/jobs"
@@ -160,17 +169,21 @@ class VeeamProvider(BaseProvider):
                 endpoint = "/api/v1/sessions"
             elif query_type == "repositories":
                 endpoint = "/api/v1/backupInfrastructure/repositories"
+            elif query_type == "vms":
+                endpoint = "/api/v1/inventory/vms"
+            elif query_type == "protected_vms":
+                endpoint = "/api/v1/inventory/protectedVms"
             else:
                 logger.error(f"Unsupported query type: {query_type}")
                 return []
-            
+
             # Make API request
             response = await self.client.get(endpoint, params=params)
             response.raise_for_status()
-            
+
             # Parse response
             data = response.json()
-            
+
             # Extract items based on query type
             if query_type == "jobs":
                 items = data.get("data", [])
@@ -181,36 +194,42 @@ class VeeamProvider(BaseProvider):
             elif query_type == "repositories":
                 items = data.get("data", [])
                 return items
-            
+            elif query_type == "vms":
+                items = data.get("data", [])
+                return items
+            elif query_type == "protected_vms":
+                items = data.get("data", [])
+                return items
+
             return []
         except Exception as e:
             logger.error(f"Error querying Veeam: {e}")
             return []
-    
+
     async def notify(self, notification_params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Perform actions on Veeam jobs.
-        
+
         Args:
             notification_params: Parameters for the action
                 - action: Action to perform (start, stop, retry)
                 - job_id: ID of the job
-                
+
         Returns:
             Result of the action
         """
         if not await self._get_token():
             logger.error("Failed to get Veeam token")
             return {"success": False, "message": "Failed to authenticate"}
-        
+
         try:
             # Extract parameters
             action = notification_params.get("action")
             job_id = notification_params.get("job_id")
-            
+
             if not action or not job_id:
                 return {"success": False, "message": "Action and job_id are required"}
-            
+
             # Perform action based on type
             if action == "start":
                 return await self._start_job(job_id)
@@ -223,76 +242,131 @@ class VeeamProvider(BaseProvider):
         except Exception as e:
             logger.error(f"Error in Veeam notify operation: {e}")
             return {"success": False, "message": f"Error: {str(e)}"}
-    
+
     async def _start_job(self, job_id: str) -> Dict[str, Any]:
         """
         Start a backup job.
-        
+
         Args:
             job_id: ID of the job to start
-            
+
         Returns:
             Result of the operation
         """
         endpoint = f"/api/v1/jobs/{job_id}/start"
-        
+
         response = await self.client.post(endpoint)
         response.raise_for_status()
-        
+
         return {
             "success": True,
             "message": "Job started successfully",
             "task_id": response.json().get("taskId")
         }
-    
+
     async def _stop_job(self, job_id: str) -> Dict[str, Any]:
         """
         Stop a backup job.
-        
+
         Args:
             job_id: ID of the job to stop
-            
+
         Returns:
             Result of the operation
         """
         endpoint = f"/api/v1/jobs/{job_id}/stop"
-        
+
         response = await self.client.post(endpoint)
         response.raise_for_status()
-        
+
         return {
             "success": True,
             "message": "Job stopped successfully"
         }
-    
+
+    async def _get_client_filters(self, client_id: str) -> Dict[str, Any]:
+        """
+        Get Veeam-specific filters for a client.
+
+        This method retrieves the mapping between a client ID and Veeam-specific
+        filters such as VM names, job names, etc.
+
+        Args:
+            client_id: MSPAlwaysOn client ID
+
+        Returns:
+            Dictionary of Veeam-specific filters
+        """
+        try:
+            # Query the database for client information
+            from sqlalchemy.ext.asyncio import AsyncSession
+            from sqlalchemy.future import select
+            from app.db.base_class import get_db
+            from app.models.client import Client
+
+            # Get database session
+            db_session = None
+            async for session in get_db():
+                db_session = session
+                break
+
+            if not db_session:
+                logger.error("Failed to get database session")
+                return {}
+
+            # Query client by ID
+            result = await db_session.execute(select(Client).where(Client.id == int(client_id)))
+            client = result.scalars().first()
+
+            if not client:
+                logger.error(f"Client with ID {client_id} not found")
+                return {}
+
+            # Get client name and metadata containing Veeam-specific filters if available
+            client_name = client.name
+            metadata = client.metadata or {}
+            veeam_filters = metadata.get("veeam_filters", {})
+
+            # If we have direct filter mappings in metadata, use them
+            if veeam_filters:
+                return veeam_filters
+
+            # Otherwise, use a name-based filter as fallback
+            return {
+                "name": client_name  # This will filter jobs/VMs by name containing the client name
+            }
+        except Exception as e:
+            logger.error(f"Error getting client filters for Veeam: {e}")
+            return {}
+
     async def _retry_job(self, job_id: str) -> Dict[str, Any]:
         """
         Retry a failed backup job.
-        
+
         Args:
             job_id: ID of the job to retry
-            
+
         Returns:
             Result of the operation
         """
         endpoint = f"/api/v1/jobs/{job_id}/retry"
-        
+
         response = await self.client.post(endpoint)
         response.raise_for_status()
-        
+
         return {
             "success": True,
             "message": "Job retry initiated successfully",
             "task_id": response.json().get("taskId")
         }
-    
+
     def _transform_job_to_alert(self, job: Dict[str, Any]) -> Dict[str, Any]:
         """
         Transform a Veeam job to a Keep alert format.
-        
+
         Args:
             job: Veeam job
-            
+
         Returns:
             Keep alert
         """
@@ -304,7 +378,7 @@ class VeeamProvider(BaseProvider):
             "Running": "info",
             "Idle": "info"
         }
-        
+
         # Map job status to alert status
         status_map = {
             "Success": "resolved",
@@ -313,10 +387,10 @@ class VeeamProvider(BaseProvider):
             "Running": "firing",
             "Idle": "resolved"
         }
-        
+
         # Get job status
         job_status = job.get("lastResult", "Unknown")
-        
+
         # Map to Keep alert
         return {
             "id": str(job.get("id")),
@@ -342,14 +416,14 @@ class VeeamProvider(BaseProvider):
             },
             "raw_data": job
         }
-    
+
     def _transform_session_to_alert(self, session: Dict[str, Any]) -> Dict[str, Any]:
         """
         Transform a Veeam session to a Keep alert format.
-        
+
         Args:
             session: Veeam session
-            
+
         Returns:
             Keep alert
         """
@@ -361,7 +435,7 @@ class VeeamProvider(BaseProvider):
             "Running": "info",
             "Idle": "info"
         }
-        
+
         # Map session status to alert status
         status_map = {
             "Success": "resolved",
@@ -370,10 +444,10 @@ class VeeamProvider(BaseProvider):
             "Running": "firing",
             "Idle": "resolved"
         }
-        
+
         # Get session status
         session_status = session.get("result", "Unknown")
-        
+
         # Map to Keep alert
         return {
             "id": str(session.get("id")),

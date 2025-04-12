@@ -1,12 +1,14 @@
 'use client';
 
-import { Card, Title, Text, Grid, Col, Flex, Metric, ProgressBar } from '@tremor/react';
+import { Card, Title, Text, Grid, Flex, Metric, ProgressBar } from '@tremor/react';
 import ClientSelector from './components/ClientSelector';
 import AlertDashboard from './components/AlertDashboard';
+import ProtectedRoute from './components/ProtectedRoute';
 
 export default function Home() {
   return (
-    <div className="p-6">
+    <ProtectedRoute>
+      <div className="p-6">
       <Flex justifyContent="between" alignItems="center" className="mb-6">
         <div>
           <Title>MSPAlwaysOn Dashboard</Title>
@@ -62,6 +64,7 @@ export default function Home() {
           <Text>Coming soon</Text>
         </Card>
       </Grid>
-    </div>
+      </div>
+    </ProtectedRoute>
   );
 }

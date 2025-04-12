@@ -9,8 +9,9 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import MSP-specific routers
-from app.api.api import api_router as msp_api_router
+# Import application modules
+from app.api.api import api_router
+from app.core.config import settings
 
 # Import Keep.dev integration
 from keep_integration import initialize_keep_integration
@@ -22,10 +23,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # CORS configuration
-ALLOWED_ORIGINS = [
+ALLOWED_ORIGINS = settings.BACKEND_CORS_ORIGINS or [
     "http://localhost",
     "http://localhost:5173",  # Vite dev server
     "http://localhost:3000",  # Next.js dev server
+    "http://localhost:3001",  # MSPAlwaysOn frontend
     # Add production URLs as needed
 ]
 
@@ -48,8 +50,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include MSP-specific API router
-app.include_router(msp_api_router)
+# Include API router
+app.include_router(api_router)
 
 # Include Keep.dev API router
 app.include_router(keep_api_router)

@@ -1,6 +1,9 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAuth } from '../lib/auth/auth-context';
 
 interface NavItem {
   name: string;
@@ -10,7 +13,9 @@ interface NavItem {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  
+  const router = useRouter();
+  const { user, logout, isAuthenticated } = useAuth();
+
   const navigation: NavItem[] = [
     {
       name: 'Dashboard',
@@ -104,16 +109,42 @@ export default function Sidebar() {
           );
         })}
       </nav>
-      <div className="flex items-center px-4 py-3 border-t border-gray-200">
-        <div className="flex-shrink-0">
-          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold">
-            MS
+      <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+        {isAuthenticated && user ? (
+          <>
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold">
+                  {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                </div>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-gray-700">{user.name}</p>
+                <p className="text-xs font-medium text-gray-500">{user.email}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={logout}
+              className="text-sm text-gray-500 hover:text-gray-700"
+              title="Sign out"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
+              </svg>
+            </button>
+          </>
+        ) : (
+          <div className="w-full">
+            <button
+              type="button"
+              onClick={() => router.push('/login')}
+              className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100"
+            >
+              Sign in
+            </button>
           </div>
-        </div>
-        <div className="ml-3">
-          <p className="text-sm font-medium text-gray-700">MSP Admin</p>
-          <p className="text-xs font-medium text-gray-500">admin@mspalwayson.com</p>
-        </div>
+        )}
       </div>
     </div>
   );
