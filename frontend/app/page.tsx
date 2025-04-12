@@ -1,69 +1,32 @@
 'use client';
 
-import { Card, Title, Text, Grid, Flex, Metric, ProgressBar } from '@tremor/react';
-import ClientSelector from './components/ClientSelector';
-import AlertDashboard from './components/AlertDashboard';
+import React from 'react';
 import ProtectedRoute from './components/ProtectedRoute';
+import DashboardGrid from './components/dashboard/DashboardGrid';
+import AlertsWidget from './components/dashboard/widgets/AlertsWidget';
+import ClientHealthWidget from './components/dashboard/widgets/ClientHealthWidget';
+import BackupCoverageWidget from './components/dashboard/widgets/BackupCoverageWidget';
+import AgentActivityWidget from './components/dashboard/widgets/AgentActivityWidget';
+import PatchComplianceWidget from './components/dashboard/widgets/PatchComplianceWidget';
+import ToolInvocationWidget from './components/dashboard/widgets/ToolInvocationWidget';
 
 export default function Home() {
   return (
     <ProtectedRoute>
       <div className="p-6">
-      <Flex justifyContent="between" alignItems="center" className="mb-6">
-        <div>
-          <Title>MSPAlwaysOn Dashboard</Title>
-          <Text>Unified AIOps and alert management platform for MSPs</Text>
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-white">MSPAlwaysOn Dashboard</h1>
+          <p className="text-slate-400">Unified AIOps and alert management platform for MSPs</p>
         </div>
-        <ClientSelector />
-      </Flex>
 
-      <Grid numItemsMd={2} numItemsLg={4} className="gap-6 mt-6">
-        <Card decoration="top" decorationColor="red">
-          <Text>Critical Alerts</Text>
-          <Metric>5</Metric>
-        </Card>
-
-        <Card decoration="top" decorationColor="amber">
-          <Text>Warning Alerts</Text>
-          <Metric>12</Metric>
-        </Card>
-
-        <Card decoration="top" decorationColor="blue">
-          <Text>Open Tickets</Text>
-          <Metric>24</Metric>
-        </Card>
-
-        <Card decoration="top" decorationColor="emerald">
-          <Text>Backup Success Rate</Text>
-          <Metric>98.5%</Metric>
-          <Flex className="mt-4">
-            <Text>Last 24 hours</Text>
-            <Text>98.5%</Text>
-          </Flex>
-          <ProgressBar value={98.5} color="emerald" className="mt-2" />
-        </Card>
-      </Grid>
-
-      <div className="mt-6">
-        <AlertDashboard />
-      </div>
-
-      <Grid numItemsMd={2} numItemsLg={3} className="gap-6 mt-6">
-        <Card>
-          <Title>Recent Tickets</Title>
-          <Text>Coming soon</Text>
-        </Card>
-
-        <Card>
-          <Title>Backup Status</Title>
-          <Text>Coming soon</Text>
-        </Card>
-
-        <Card>
-          <Title>Security Events</Title>
-          <Text>Coming soon</Text>
-        </Card>
-      </Grid>
+        <DashboardGrid>
+          <AlertsWidget />
+          <ClientHealthWidget />
+          <BackupCoverageWidget />
+          <AgentActivityWidget />
+          <PatchComplianceWidget />
+          <ToolInvocationWidget />
+        </DashboardGrid>
       </div>
     </ProtectedRoute>
   );
